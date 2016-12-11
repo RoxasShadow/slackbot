@@ -25,8 +25,14 @@
 //!     echo_bot.run().unwrap();
 //! }
 //! ```
+#![feature(proc_macro)]
 
 extern crate slack;
+extern crate regex;
+
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
 extern crate serde_json;
 
 use std::collections::HashMap;
@@ -137,11 +143,11 @@ impl SlackBot {
 /// ```
 pub trait CommandHandler {
     /// Handle the command.
-    fn handle(&mut self, sender: &mut Sender, args: &Vec<String>);
+    fn handle(&mut self, sender: &mut Sender, args: &regex::Captures);
 }
 
-impl<F> CommandHandler for F where F: FnMut(&mut Sender, &Vec<String>) {
-    fn handle(&mut self, sender: &mut Sender, args: &Vec<String>) {
+impl<F> CommandHandler for F where F: FnMut(&mut Sender, &regex::Captures) {
+    fn handle(&mut self, sender: &mut Sender, args: &regex::Captures) {
         self(sender, args);
     }
 }

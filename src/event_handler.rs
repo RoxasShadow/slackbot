@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use slack::{Error, Event, EventHandler, RtmClient};
+
 use serde_json::{self, Value};
+use regex::Regex;
 
 use super::CommandHandler;
 use super::sender::Sender;
@@ -18,6 +20,16 @@ pub struct SlackBotEventHandler<'a> {
     handlers: &'a mut HashMap<String, Box<CommandHandler>>
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+struct SlackEvent {
+    #[serde(rename = "type")]
+    event_type: Option<String>,
+    #[serde(rename = "user")]
+    user_id: Option<String>,
+    text: Option<String>,
+    channel: Option<String>
+}
+
 impl<'a> SlackBotEventHandler<'a> {
     pub fn new<S: Into<String>>(name: S, handlers: &'a mut HashMap<String, Box<CommandHandler>>) -> Self {
         SlackBotEventHandler {
@@ -25,51 +37,25 @@ impl<'a> SlackBotEventHandler<'a> {
             handlers: handlers
         }
     }
-
-    // TODO: Replace lots of this with proper serde deserialization
-    fn parse_json_to_command(bot_name: &str, json_str: &str) -> Option<UserCommand> {
-        let data: Value = serde_json::from_str(json_str).unwrap();
-        let message = data.as_object().unwrap();
-
-        if let Some(&Value::String(ref ty)) = message.get("type") {
-            if ty == "message" {
-                if let Some(&Value::String(ref text)) = message.get("text") {
-                    let bang_command = "!".to_owned() + bot_name;
-                    if text.starts_with(&bang_command[..]) {
-                        let mut command_pieces = text.split_whitespace().skip(1);
-                        let (command, args) = match command_pieces.next() {
-                            Some(c) => (c, command_pieces.map(|arg| arg.to_owned()).collect::<Vec<_>>()),
-                            None => ("help", vec![])
-                        };
-
-                        if let Some(&Value::String(ref user_id)) = message.get("user") {
-                            if let Some(&Value::String(ref channel)) = message.get("channel") {
-                                return Some(UserCommand {
-                                    command: command.to_owned(),
-                                    args: args,
-                                    user_id: user_id.to_owned(),
-                                    channel: channel.to_owned()
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
 }
 
 impl<'a> EventHandler for SlackBotEventHandler<'a> {
     fn on_event(&mut self, cli: &mut RtmClient, _: Result<Event, Error>, json_str: &str) {
-        if let Some(cmd) = Self::parse_json_to_command(&self.bot_name[..], json_str) {
-            let user = cli.get_users().iter().find(|u| u.id == cmd.user_id).unwrap().clone();
-            if let Some(handler) = self.handlers.get_mut(&cmd.command[..]) {
-                let mut sender = Sender::new(cli, cmd.channel, user);
-                handler.handle(&mut sender, &cmd.args);
-            }
+        let event: SlackEvent = serde_json::from_str(json_str).unwrap();
 
-            println!("Got command: {}", cmd.command);
+        if event.event_type == Some("message".to_owned()) {
+            let user_id = event.user_id.unwrap();
+            let user = cli.get_users().iter().find(|u| u.id == user_id).unwrap().to_owned();
+            let text = event.text.unwrap();
+            let channel = event.channel.unwrap();
+
+            for (command_name, handler) in self.handlers.into_iter() {
+                let regex = Regex::new(command_name).unwrap();
+                if regex.is_match(&text) {
+                    let mut sender = Sender::new(cli, channel.to_owned(), user.to_owned());
+                    handler.handle(&mut sender, &regex.captures(&text).unwrap());
+                }
+            }
         }
     }
 
