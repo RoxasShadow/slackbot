@@ -2,18 +2,11 @@ use std::collections::HashMap;
 
 use slack::{Error, Event, EventHandler, RtmClient};
 
-use serde_json::{self, Value};
+use serde_json;
 use regex::Regex;
 
 use super::CommandHandler;
 use super::sender::Sender;
-
-struct UserCommand {
-    command: String,
-    args: Vec<String>,
-    user_id: String,
-    channel: String
-}
 
 pub struct SlackBotEventHandler<'a> {
     bot_name: String,
@@ -24,6 +17,7 @@ pub struct SlackBotEventHandler<'a> {
 struct SlackEvent {
     #[serde(rename = "type")]
     event_type: Option<String>,
+    subtype: Option<String>,
     #[serde(rename = "user")]
     user_id: Option<String>,
     text: Option<String>,
@@ -43,7 +37,7 @@ impl<'a> EventHandler for SlackBotEventHandler<'a> {
     fn on_event(&mut self, cli: &mut RtmClient, _: Result<Event, Error>, json_str: &str) {
         let event: SlackEvent = serde_json::from_str(json_str).unwrap();
 
-        if event.event_type == Some("message".to_owned()) {
+        if event.event_type == Some("message".to_owned()) && event.subtype == None {
             let user_id = event.user_id.unwrap();
             let user = cli.get_users().iter().find(|u| u.id == user_id).unwrap().to_owned();
             let text = event.text.unwrap();
