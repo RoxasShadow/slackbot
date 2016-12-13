@@ -35,6 +35,8 @@ impl<'a> SlackBotEventHandler<'a> {
 
 impl<'a> EventHandler for SlackBotEventHandler<'a> {
     fn on_event(&mut self, cli: &mut RtmClient, _: Result<Event, Error>, json_str: &str) {
+        info!("{}", json_str);
+
         let event: SlackEvent = serde_json::from_str(json_str).unwrap();
 
         if event.event_type == Some("message".to_owned()) && event.subtype == None {
